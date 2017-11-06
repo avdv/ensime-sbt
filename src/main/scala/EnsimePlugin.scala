@@ -242,11 +242,15 @@ object EnsimePlugin extends AutoPlugin {
       }
     }
 
+  private val isPreJava9 = sys.props("java.version").contains(".")
+
   def ensimeServerIndexTask: Def.Initialize[Task[Unit]] = Def.task {
     val javaH = ensimeJavaHome.value
     val java = javaH / "bin/java"
     val scalaCompilerJars = ensimeScalaJars.value.toSet
-    val jars = ensimeServerJars.value.toSet ++ scalaCompilerJars + javaH / "lib/tools.jar"
+    val jars = ensimeServerJars.value.toSet ++ scalaCompilerJars ++ (
+      if (isPreJava9) Set(javaH / "lib/tools.jar") else Set.empty
+    )
     val jvmFlags = ensimeJavaFlags.value ++ Seq("-Densime.config=.ensime", "-Densime.exitAfterIndex=true")
     val cache = cacheDir(ensimeCachePrefix.value, file("."))
 
@@ -310,7 +314,9 @@ object EnsimePlugin extends AutoPlugin {
 
     val javaH = ensimeJavaHome.value
     val scalaCompilerJars = ensimeScalaJars.value.toSet
-    val serverJars = ensimeServerJars.value.toSet -- scalaCompilerJars + javaH / "lib/tools.jar"
+    val serverJars = ensimeServerJars.value.toSet -- scalaCompilerJars ++ (
+      if (isPreJava9) Set(javaH / "lib/tools.jar") else Set.empty
+    )
     val serverVersion = ensimeServerVersion.value
 
     // for some reason this gives the wrong number in projectData
@@ -637,10 +643,10 @@ object EnsimePlugin extends AutoPlugin {
     // osx
     Try(sys.process.Process("/usr/libexec/java_home").!!.trim).toOption
   ).flatten.filter { n =>
-      new File(n + "/lib/tools.jar").exists
-    }.headOption.map(new File(_).getCanonicalFile).getOrElse(
-      throw new FileNotFoundException(
-        """Could not automatically find the JDK/lib/tools.jar.
+    new File(n + "/lib/tools.jar").exists || new File(n, "jmods").isDirectory
+  }.headOption.map(new File(_).getCanonicalFile).getOrElse(
+    throw new FileNotFoundException(
+      """Could not automatically find the JDK home.
       |You must explicitly set JDK_HOME or JAVA_HOME.""".stripMargin
       )
     )
